@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Weather</string>
+    <string name="action_savedCities">Saved Cities</string>
+    <string name="title_activity_display_weather">DisplayWeather</string>
+    <string name="title_activity_display_db">DisplayDBActivity</string>
+    <string name="snackbar_citySaved_message">Added to favorites</string>
+    <string name="snackbar_failure_message">Oops! Unable to add to favorites</string>
+    <string name="snackbar_deleted_message">Deleted from favorites</string>
+    <string name="snackbar_failedSearch_message">Unable to find city</string>
+
+</resources>
