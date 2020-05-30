@@ -3,21 +3,13 @@ package com.weatherapp2019;
 import com.google.android.material.snackbar.BaseTransientBottomBar;
 import com.google.android.material.snackbar.Snackbar;
 import com.weatherapp2019.JSONClasses.*;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.ActionBar;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.RectF;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.AsyncTask;
@@ -25,39 +17,30 @@ import android.os.Bundle;
 import android.os.Looper;
 import android.provider.Settings;
 import androidx.annotation.NonNull;
-import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
-
-import android.util.Log;
 import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.ref.WeakReference;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
-
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -66,30 +49,15 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.weatherapp2019.ThreeHourForecast.CompleteForecast;
-
 import static com.weatherapp2019.DisplayWeatherActivity.citySaved;
 import static com.weatherapp2019.DisplayWeatherActivity.failedSearch;
 
-public class MainActivity extends AppCompatActivity {
-    Context context = this;
-    LinearLayout ll;
-    RecyclerView rv;
-    public static CustomRecyclerAdapter adapter;
-    FusedLocationProviderClient mFusedLocationClient;
-    // These codes are used as keys for the two intent extras
+public class MainActivity extends AppCompatActivity implements ActivityCompat.OnRequestPermissionsResultCallback {
+
     static final String cityNameCode = "cityNameCode";
     static final String intentSourceCode = "intentSourceCode";
-    // Code for passCity intent
     static final int passCityCode = 200;
-    final int etID = 22;
-    int PERMISSION_ID = 44;
-    final ColorDrawable background = new ColorDrawable(Color.RED);
-    TextView noSavedCitites;
-    LocationCallback locationCallback;
-    View localWeatherLayout;
-    String localCity;
-    public static ArrayList<Complete> result2;
-
+    static final int locationPERMISSION_ID = 44;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,68 +66,30 @@ public class MainActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        // Add vertical linearLayout to root layout
-        ConstraintLayout root = findViewById(R.id.root);
-        ll = new LinearLayout(this);
-        ll.setOrientation(LinearLayout.VERTICAL);
-        ll.setLayoutParams(new ConstraintLayout.LayoutParams(ConstraintLayout.LayoutParams.MATCH_PARENT, ConstraintLayout.LayoutParams.MATCH_PARENT));
-        root.addView(ll);
-
-        // Add editText box to linearLayout
-        EditText et = new EditText(this);
-        et.setId(etID);
-        et.setHint("Enter City Name Here");
-
-        // et.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        ll.addView(et);
-
-        // Add search button to linearLayout that starts DisplayWeatherActivity
-        Button search = new Button(this);
-        search.setText("Search");
-        ll.addView(search);
-        search.setOnClickListener(new Button.OnClickListener() {
+        this.findViewById(R.id.button).setOnClickListener(new Button.OnClickListener() {
             public void onClick(View v) {
-                EditText cityName = findViewById(etID);
+                EditText cityName = findViewById(R.id.editText);
                 passCity(cityName.getText().toString(), "searchedCity");
             }
         });
 
-        LayoutInflater inflater = LayoutInflater.from(context);
-        localWeatherLayout = inflater.inflate(R.layout.local_weather_template, null, false);
-        localWeatherLayout.setOnClickListener(new Button.OnClickListener() {
-            public void onClick(View v) {
-                if(localCity != null) {
-                    passCity(localCity, "searchedCity");
-                }
+        initiateLocalWeather(this);
+        GetSavedWeather getSavedWeather = new GetSavedWeather(this);
 
-            }
-        });
-        ll.addView(localWeatherLayout);
-
-
-
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                if(locationResult == null) {
-                    return;
-                }
-                for(Location location : locationResult.getLocations()) {
-                    System.out.println(location.getLatitude());
-                }
-            }
-        };
-
-        // Request location permissions if needed. Get local and saved weather
-        initiateLocalWeather();
-        GetSavedWeather getSavedWeather = new GetSavedWeather();
         getSavedWeather.execute("hi");
     }
 
+    //todo: PROBLEM: INFINITE LOCATION REQUEST LOOP
     @Override
     protected void onRestart() {
         super.onRestart();
-        initiateLocalWeather();
+        if(isLocationEnabled() && checkPermissions()) {
+            getLocation(this);
+        } else{
+            Snackbar.make(findViewById(R.id.root), "Please enable location in order to view current, local weather", BaseTransientBottomBar.LENGTH_LONG).show();
+            //TODO: DISPLAY GENERIC CITY
+        }
+
     }
 
     // Inflate OptionsMenu using menu_main res file.
@@ -181,8 +111,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-
-
+///////////////////////// OpenWeatherMap Funcs /////////////////////////////////////////////////////
 
     public static CompleteForecast getCompleteForecast(String url) throws IOException{
             URL weatherMap = new URL(url);
@@ -199,7 +128,6 @@ public class MainActivity extends AppCompatActivity {
             return objectMapper.readValue(inputLine, CompleteForecast.class);
     }
 
-    // Take an OpenWeatherMap URL and return a Complete weather object
     public static Complete getComplete(String url) throws IOException{
         //initialize a URL object
         URL weatherMap = new URL(url);
@@ -215,67 +143,28 @@ public class MainActivity extends AppCompatActivity {
         return objectMapper.readValue(inputLine, Complete.class);
     }
 
-    // Check location permissions and call GetLocalWeather.
-    @SuppressLint("MissingPermission")
-    private void initiateLocalWeather(){
-        if (checkPermissions()) {
-            if (isLocationEnabled()) {
-                mFusedLocationClient = new FusedLocationProviderClient(context);
-                mFusedLocationClient.getLastLocation().addOnCompleteListener(
-                        new OnCompleteListener<Location>() {
-                            @Override
-                            public void onComplete(@NonNull Task<Location> task) {
-                                Location location = task.getResult();
-                                if (location == null) {
-                                    requestNewLocationData();
-                                } else {
-                                    LocationRequest locationRequest = new LocationRequest();
-                                    locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-                                    locationRequest.setInterval(5000);
-                                    locationRequest.setFastestInterval(5000);
-
-                                    mFusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
-                                    GetLocalWeather localWeather = new GetLocalWeather();
-                                    localWeather.execute("https://api.openweathermap.org/data/2.5/weather?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3",
-                                            "https://api.openweathermap.org/data/2.5/forecast?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3");
-                                }
-                            }
-                        }
-                );
-            } else {
-                Toast.makeText(this, "Turn on location", Toast.LENGTH_LONG).show();
-                Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                startActivity(intent);
-            }
-        } else {
-            requestPermissions();
-            if (isLocationEnabled()) {
-                mFusedLocationClient = new FusedLocationProviderClient(context);
-                mFusedLocationClient.getLastLocation().addOnCompleteListener(
-                        new OnCompleteListener<Location>() {
-                            @Override
-                            public void onComplete(@NonNull Task<Location> task) {
-                                Location location = task.getResult();
-                                if (location == null) {
-                                    requestNewLocationData();
-                                } else {
-                                    GetLocalWeather localWeather = new GetLocalWeather();
-                                    localWeather.execute("https://api.openweathermap.org/data/2.5/weather?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3",
-                                            "https://api.openweathermap.org/data/2.5/forecast?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3");
-                                }
-                            }
-                        }
-                );
-            } else {
-                Toast.makeText(this, "Turn on location", Toast.LENGTH_LONG).show();
-                Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                startActivity(intent);
-            }
-        }
+    public static String getWeatherData(String url) throws IOException{
+        URL weathermap = new URL(url);
+        URLConnection conn = weathermap.openConnection();
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        return br.readLine();
     }
+
+    public static Complete parseWeatherData(String data) throws IOException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        return objectMapper.readValue(data, Complete.class);
+    }
+
+///////////////////////////////////// UI Funcs  //////////////////////////////////////////////////
 
     // Call getComplete. Pass Complete object to buildLocalWeather
     private class GetLocalWeather extends AsyncTask<String, Void, CompletePlusForecast> {
+        private WeakReference<MainActivity> activityRef;
+
+        public GetLocalWeather(MainActivity context){
+            this.activityRef = new WeakReference<MainActivity>(context);
+        }
+
         protected CompletePlusForecast doInBackground(String... strings) {
             try{
                 Complete complete = getComplete(strings[0]);
@@ -292,15 +181,17 @@ public class MainActivity extends AppCompatActivity {
 
         }
         protected void onPostExecute(CompletePlusForecast result) {
+            MainActivity activity = this.activityRef.get();
+            if (activity == null || activity.isFinishing()) return;
             try {
-                buildLocalWeather(result.complete, result.forecast);
+                buildLocalWeather(result.complete, result.forecast, activity);
 
             } catch(Exception e) {
                 // if localCity was never gotten:
-                if(localCity == null) {
-                    TextView cityName = (TextView) localWeatherLayout.findViewById(R.id.localCityName);
-                    cityName.setText("Unable to get local weather data at this time");
-                }
+
+                TextView cityName = activity.findViewById(R.id.localCityName);
+                cityName.setText("There was a problem getting local weather data at this time");
+
                 Snackbar.make(findViewById(R.id.root), "Unable to get current, local weather data", BaseTransientBottomBar.LENGTH_LONG).show();
                 e.printStackTrace();
             }
@@ -308,21 +199,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    //TODO: USE WEAK REFERENCE TO POPULATE VIEWS
     // Populate localWeatherLayout using Complete parameter.
-    private void buildLocalWeather(Complete complete, CompleteForecast forecast) {
-        localCity = complete.name;
+    private void buildLocalWeather(Complete complete, CompleteForecast forecast, MainActivity activity) {
+        View localLayout = activity.findViewById(R.id.localWeather);
+
+        localLayout.setOnClickListener(new PassLocalCityClickListener(activity, complete));
+
+//        localLayout.setOnClickListener(new Button.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                    passCity(localCity, "searchedCity");
+//            }
+//        });
         // Lookup view from template
-        TextView cityName = (TextView) localWeatherLayout.findViewById(R.id.localCityName);
-        TextView temperature = (TextView) localWeatherLayout.findViewById(R.id.localTemperature);
-        TextView temperatureHelper = (TextView) localWeatherLayout.findViewById(R.id.localTemperatureHelper);
-        TextView temperatureHelper2 = (TextView) localWeatherLayout.findViewById(R.id.localTemperatureHelper2);
-        TextView minValue = (TextView) localWeatherLayout.findViewById(R.id.minValue);
-        TextView maxValue = (TextView) localWeatherLayout.findViewById(R.id.maxValue);
-        TextView humidityValue = (TextView) localWeatherLayout.findViewById(R.id.humidityValue);
-        TextView feelsLikeValue = (TextView) localWeatherLayout.findViewById(R.id.feelsLikeValue);
-        TextView description = (TextView) localWeatherLayout.findViewById(R.id.localDescription);
-        ImageView icon = (ImageView) localWeatherLayout.findViewById(R.id.localWeather_icon);
-        LinearLayout forecastList = (LinearLayout) localWeatherLayout.findViewById(R.id.forecast_list);
+        TextView cityName = (TextView) localLayout.findViewById(R.id.localCityName);
+        TextView temperature = (TextView) localLayout.findViewById(R.id.localTemperature);
+        TextView temperatureHelper = (TextView) localLayout.findViewById(R.id.localTemperatureHelper);
+        TextView temperatureHelper2 = (TextView) localLayout.findViewById(R.id.localTemperatureHelper2);
+        TextView minValue = (TextView) localLayout.findViewById(R.id.minValue);
+        TextView maxValue = (TextView) localLayout.findViewById(R.id.maxValue);
+        TextView humidityValue = (TextView) localLayout.findViewById(R.id.humidityValue);
+        TextView feelsLikeValue = (TextView) localLayout.findViewById(R.id.feelsLikeValue);
+        TextView description = (TextView) localLayout.findViewById(R.id.localDescription);
+        ImageView icon = (ImageView) localLayout.findViewById(R.id.localWeather_icon);
+        LinearLayout forecastList = (LinearLayout) localLayout.findViewById(R.id.forecast_list);
 
         // Set template text
         cityName.setText(complete.name);
@@ -374,24 +275,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Returns a textView with given message
-    public TextView createMessage(String s) {
-        TextView savedWeatherFailure = new TextView(context);
-        savedWeatherFailure.setText(s);
-        savedWeatherFailure.setGravity(Gravity.CENTER_HORIZONTAL);
-        savedWeatherFailure.setTextSize(20);
-        savedWeatherFailure.setPadding(10,30,10,30);
-        return savedWeatherFailure;
-    }
-
     // Call getComplete for each city in database. Bind Complete array to RecyclerView using CustomRecyclerAdapter.
+    @SuppressLint("StaticFieldLeak")
     private class GetSavedWeather extends AsyncTask<String, Void,  ArrayList<Complete>> {
+
+        private WeakReference<MainActivity> activityRef;
+
+        GetSavedWeather(MainActivity context){
+            this.activityRef = new WeakReference<MainActivity>(context);
+        }
 
         // Curse through database making calls to getComplete. Pass Complete list to onPostExecute
         protected  ArrayList<Complete> doInBackground(String... strings) {
             try{
+                MainActivity activity = activityRef.get();
+//                if (activity == null || activity.isFinishing()) return;
                 // Use helper to instantiate database
-                SavedCitiesHelper helper = new SavedCitiesHelper(context);
+                SavedCitiesHelper helper = new SavedCitiesHelper(activity);
                 SQLiteDatabase db = helper.getReadableDatabase();
 
                 // Create cursor on database
@@ -421,113 +321,49 @@ public class MainActivity extends AppCompatActivity {
 
         // Bind list of Complete objects to recycler view using adapter. (Also swipe to delete)
         protected void onPostExecute(final ArrayList<Complete> result) throws NullPointerException {
+            MainActivity activity = activityRef.get();
+            if (activity == null || activity.isFinishing()) return;
+            LinearLayout ll = activity.findViewById(R.id.linearLayout);
+
             // if result is null, throw nullPointerException. (Because we cant throw exceptions in doInBackground)
             if(result == null) {
-                // Make textView if savedWeather retrieval fails
-                ll.addView(createMessage("Unable to get saved weather data"));
+                ll.addView(createMessage("Unable to get saved weather data", activity));
             } else {
                 if(result.size() == 0) {
-                    noSavedCitites = createMessage("Add cities to your favorites by searching and clicking the 'Add To Favorites' button");
-                    ll.addView(noSavedCitites);
+                    TextView noSavedCities = activity.findViewById(R.id.noSavedCities);
+                    noSavedCities.setText("Add cities to your favorites by searching and clicking the 'Add To Favorites' button");
                 }
                 //Create adapter with result and add it to rv
-                adapter = new CustomRecyclerAdapter(result, new ClickListener() {
+                CustomRecyclerAdapter adapter = new CustomRecyclerAdapter(result, new ClickListener() {
                     @Override
                     public void onItemClick(Complete complete) {
                         passCity(complete.name, "savedCity");
                     }
-                }, context);
-                rv = new RecyclerView(context);
+                }, activity);
+
+                RecyclerView rv = activity.findViewById(R.id.recyclerView);
                 rv.setAdapter(adapter);
-                rv.setLayoutManager(new GridLayoutManager(context, 1));
+                rv.setLayoutManager(new GridLayoutManager(activity, 1));
 
+                ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new MyCallback(activity, result, adapter));
 
-                // Final pointer for touch helper
-                result2 = result;
-
-                // Touch helper that adds swipe to delete/ undo snackbar
-                ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback
-                        (0, ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
-                    @Override
-                    public void onSwiped(RecyclerView.ViewHolder viewHolder, int swipeDir) {
-
-                        int position = viewHolder.getAdapterPosition();
-                        final Complete complete = result2.get(position);
-
-                        // Instantiate database
-                        final SavedCitiesHelper helper = new SavedCitiesHelper(context);
-                        SQLiteDatabase db = helper.getWritableDatabase();
-
-                        // Delete swiped city from database and the adapter's list. Then notify adapter
-                        db.delete("SavedCities", "CityID=" + result2.get(position).id, null);
-                        result2.remove(position);
-                        adapter.notifyItemRemoved(position);
-                        if(adapter.getItemCount() == 0) {
-                            if(noSavedCitites == null) {
-                                noSavedCitites = createMessage("Add cities to your favorites by searching and clicking the 'Add To Favorites' button");
-                                ll.addView(noSavedCitites);
-                            }
-                        }
-                        db.close();
-
-                        // Smnackbar notifying delete/offering undo
-                        Snackbar snackbarDeleted = Snackbar.make(findViewById(R.id.root), R.string.snackbar_deleted_message, BaseTransientBottomBar.LENGTH_LONG);
-
-                        // Class used to undo
-                        class MyUndoListener implements View.OnClickListener {
-
-                            @Override
-                            public void onClick(View v) {
-                                helper.insertData(complete.id);
-                                result2.add(complete);
-                                adapter.notifyDataSetChanged();
-                                if(noSavedCitites != null) {
-                                    ll.removeView(noSavedCitites);
-                                    noSavedCitites = null;
-                                }
-                            }
-                        }
-
-                        // Attach undo class to snackbar. Show snackbar
-                        snackbarDeleted.setAction("Undo", new MyUndoListener());
-                        snackbarDeleted.show();
-                    }
-
-                    @Override
-                    public boolean onMove(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, RecyclerView.ViewHolder target) {
-                        Toast.makeText(context, "on Move", Toast.LENGTH_SHORT).show();
-                        return false;
-                    }
-
-                    @Override
-                    public void onChildDraw(Canvas c, RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, float dX, float dY, int actionState, boolean isCurrentlyActive) {
-                        super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive);
-                        background.setBounds(10000, viewHolder.itemView.getTop(),
-                                viewHolder.itemView.getRight() + Math.round(dX), viewHolder.itemView.getBottom());
-                        background.draw(c);
-
-                        Drawable icon = ContextCompat.getDrawable(context, R.drawable.trash_can);
-                        int itemViewWidth = viewHolder.itemView.getWidth();
-                        int itemViewHeight = viewHolder.itemView.getHeight();
-
-                        icon.setBounds(viewHolder.itemView.getRight() - (itemViewWidth / 16) - icon.getIntrinsicWidth() * 3, viewHolder.itemView.getTop() + (itemViewHeight / 4),
-                                viewHolder.itemView.getRight() - (itemViewWidth / 16), viewHolder.itemView.getTop() + (itemViewHeight / 4) + icon.getIntrinsicHeight() * 3);
-                        icon.draw(c);
-
-                        if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) {
-                            icon.setVisible(false, true);
-                        }
-
-                    }
-
-                });
-
-                // Attach touch helper to rv and rv to ll
                 itemTouchHelper.attachToRecyclerView(rv);
-                ll.addView(rv);
+
             }
         }
     }
+
+    // Returns a textView with given message
+    public TextView createMessage(String s, MainActivity context) {
+        TextView savedWeatherFailure = new TextView(context);
+        savedWeatherFailure.setText(s);
+        savedWeatherFailure.setGravity(Gravity.CENTER_HORIZONTAL);
+        savedWeatherFailure.setTextSize(20);
+        savedWeatherFailure.setPadding(10,30,10,30);
+        return savedWeatherFailure;
+    }
+
+//////////////////////////////////// DisplayWeather Interaction Funcs //////////////////////////////
 
     // Used by Search button to Open DisplayWeatherActivity
     public void passCity(String cityName, String intentSource) {
@@ -543,41 +379,124 @@ public class MainActivity extends AppCompatActivity {
 
         if(resultCode == citySaved) {
             super.onActivityResult(requestCode, resultCode, data);
-            adapter.notifyDataSetChanged();
-            adapter.notifyItemInserted(adapter.getItemCount());
-            if(noSavedCitites != null) {
-                ll.removeView(noSavedCitites);
-                noSavedCitites = null;
+            try {
+                RecyclerView rv = this.findViewById(R.id.recyclerView);
+                CustomRecyclerAdapter adapter = (CustomRecyclerAdapter) rv.getAdapter();
+
+                String weatherData = data.getStringExtra("weatherData");
+                Complete complete = parseWeatherData(weatherData);
+
+                // Add data to database
+                SavedCitiesHelper db = new SavedCitiesHelper(this);
+                db.insertData(complete.id);
+                db.close();
+
+                adapter.notifyDataSetChanged();
+                adapter.notifyItemInserted(adapter.getItemCount());
+                adapter.getCompletes().add(complete);
+
+                TextView tv = this.findViewById(R.id.noSavedCities);
+                tv.setText("");
+                Snackbar.make(findViewById(R.id.root), R.string.snackbar_citySaved_message, BaseTransientBottomBar.LENGTH_LONG).show();
+            } catch(IOException e){
+                Snackbar.make(findViewById(R.id.root), R.string.snackbar_failure_message, BaseTransientBottomBar.LENGTH_LONG).show();
+            } catch(NullPointerException e){
+                Snackbar.make(findViewById(R.id.root), R.string.snackbar_failure_message, BaseTransientBottomBar.LENGTH_LONG).show();
             }
-            Snackbar.make(findViewById(R.id.root), R.string.snackbar_citySaved_message, BaseTransientBottomBar.LENGTH_LONG).show();
         }
+
         if(resultCode == failedSearch) {
             super.onActivityResult(requestCode, resultCode, data);
             Snackbar.make(findViewById(R.id.root), R.string.snackbar_failedSearch_message, BaseTransientBottomBar.LENGTH_LONG).show();
+        }
+    }
 
+    /////////////////////// LOCATION Funcs /////////////////////////////////////////////////////////
+
+    // if permissions not granted, call requestPermissions().
+    // else if location not enabled, call sendToLocationSettings
+    // else if permissions/location settings are good, call getLocation
+    @SuppressLint("MissingPermission")
+    private void initiateLocalWeather(MainActivity context){
+        if(!checkPermissions()){
+            requestPermissions();
+        } else if(!isLocationEnabled()) {
+            sendToLocationSettings();
+        } else {
+            getLocation(context);
         }
 
     }
 
-    // Used by getLastLocation
+    // request Location Permissions
+    private void requestPermissions(){
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, locationPERMISSION_ID);
+    }
+
+    //Called when user responds to permissions request
+    // If permission granted, check location:
+    //      If location enabled: call getLocation
+    //      If location disabled: call sendToLocationSettings
+    // If permission not granted, display a generic city (todo)
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        //super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == locationPERMISSION_ID) {
+            if(grantResults.length>0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED){
+                if(isLocationEnabled()){
+                    getLocation(this);
+                } else {
+                    sendToLocationSettings();
+                }
+            } else{
+                //Todo: display a generic city
+            }
+        }
+    }
+
+    //Send to location settings.
+    // If location enabled: call getlocation()  Else: display a generic city (todo)
+    public void sendToLocationSettings(){
+        System.out.println("SENDTOLOCATIONSETTINGS");
+        Toast.makeText(this, "Turn on location", Toast.LENGTH_LONG).show();
+        Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        startActivity(intent);
+    }
+
+    // Get location.
+    // If location not null: use it to execute GetLocalWeather
+    // If location is null: call (todo)
+    public void getLocation(final MainActivity context){
+        System.out.println("GETLOCATION");
+        FusedLocationProviderClient lastLocationClient = new FusedLocationProviderClient(this); //context not this
+        lastLocationClient.getLastLocation().addOnCompleteListener(
+                new OnCompleteListener<Location>() {
+                    @Override
+                    public void onComplete(@NonNull Task<Location> task) {
+                        Location location = task.getResult();
+                        if (location == null) {
+                            requestNewLocationData(context);
+                        } else {
+                            GetLocalWeather localWeather = new GetLocalWeather(context);
+                            localWeather.execute("https://api.openweathermap.org/data/2.5/weather?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3",
+                                    "https://api.openweathermap.org/data/2.5/forecast?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3");
+                        }
+                    }
+                }
+        );
+    }
+
+    // Return true if permissions granted
     private boolean checkPermissions(){
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED){
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED){
             return true;
         }
         return false;
     }
 
-    // Used by getLastLocation
-    private void requestPermissions(){
-        ActivityCompat.requestPermissions(
-                this,
-                new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
-                PERMISSION_ID
-        );
-    }
-
-    // Used by getLastLocation
+    // Return true if location is enabled
     private boolean isLocationEnabled(){
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || locationManager.isProviderEnabled(
@@ -585,39 +504,37 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    // Used by getLastLocation
+    // get new location updates and set onLocationResult callback
+    // onLocationResult: If location not null, execute getLocalWeather. Else, display generic city (todo)
     @SuppressLint("MissingPermission")
-    private void requestNewLocationData(){
-
-        LocationRequest mLocationRequest = new LocationRequest();
-        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        mLocationRequest.setInterval(0);
-        mLocationRequest.setFastestInterval(0);
-        mLocationRequest.setNumUpdates(1);
-
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        mFusedLocationClient.requestLocationUpdates(
-                mLocationRequest, mLocationCallback,
-                Looper.myLooper()
-        );
-
-    }
-
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERMISSION_ID) {
-            if(grantResults.length>0 && grantResults[0] == PackageManager.PERMISSION_GRANTED){
-                // Granted. Start getting the location information
+    private void requestNewLocationData(final MainActivity context){
+        System.out.println("REQUESTNEWLOCATIONDATA");
+        //Create locationCallback and override onLocationResult to execute getLocalWeather() if location was found
+        LocationCallback newLocationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                System.out.println("ONLOCATIONRESULT");
+                Location location = locationResult.getLastLocation();
+                if (location != null) {
+                    GetLocalWeather localWeather = new GetLocalWeather(context);
+                    localWeather.execute("https://api.openweathermap.org/data/2.5/weather?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3",
+                            "https://api.openweathermap.org/data/2.5/forecast?lat=" + location.getLatitude() + "&lon=" + location.getLongitude() + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3");
+                } else {
+                    //TODO display generic city
+                }
             }
-        }
-    }
+        };
 
-    private LocationCallback mLocationCallback = new LocationCallback() {
-        @Override
-        public void onLocationResult(LocationResult locationResult) {
-            Location mLastLocation = locationResult.getLastLocation();
-        }
-    };
+        //Make a location request and set interval,priority,etc
+        LocationRequest newLocationRequest = new LocationRequest();
+        newLocationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
+        newLocationRequest.setInterval(100);
+        newLocationRequest.setFastestInterval(50);
+        newLocationRequest.setNumUpdates(1);
+
+        //Make a fusedLocationProviderClient and call its requestLocationUpdates method with location request, location callback, and Looper
+        FusedLocationProviderClient newLocationClient = LocationServices.getFusedLocationProviderClient(context);
+        newLocationClient.requestLocationUpdates(newLocationRequest, newLocationCallback, Looper.myLooper());
+
+    }
 }

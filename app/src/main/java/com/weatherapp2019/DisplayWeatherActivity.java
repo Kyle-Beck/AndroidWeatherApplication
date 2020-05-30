@@ -1,43 +1,22 @@
 package com.weatherapp2019;
 
-import com.google.android.material.snackbar.BaseTransientBottomBar;
-import com.google.android.material.snackbar.Snackbar;
 import com.weatherapp2019.JSONClasses.*;
-
-import android.content.Context;
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-
 import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.weatherapp2019.ThreeHourForecast.CompleteForecast;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
-import java.net.URLConnection;
+import java.lang.ref.WeakReference;
 
 public class DisplayWeatherActivity extends AppCompatActivity {
     public static final int citySaved = 123;
     public static final int failedSearch = 124;
-    String cityName;
-    String intentSource;
-    Context context = this;
-    LinearLayout ll;
-    SavedCitiesHelper db;
-    Complete complete;
-    View displayWeatherLayout;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,36 +28,43 @@ public class DisplayWeatherActivity extends AppCompatActivity {
 
         // Receive the user's search from Intent
         Intent weatherIntent = getIntent();
-        cityName = weatherIntent.getStringExtra(MainActivity.cityNameCode);
-        intentSource = weatherIntent.getStringExtra(MainActivity.intentSourceCode);
-        ConstraintLayout root2 = findViewById(R.id.root2);
+        String cityName = weatherIntent.getStringExtra(MainActivity.cityNameCode);
+        String intentSource = weatherIntent.getStringExtra(MainActivity.intentSourceCode);
 
-        // Set up linearLayout
-        ll = new LinearLayout(this);
-        ll.setOrientation(LinearLayout.VERTICAL);
-        root2.addView(ll);
-
-        // Instantiate database
-        db = new SavedCitiesHelper(this);
-
-        LayoutInflater inflater = LayoutInflater.from(this);
-        displayWeatherLayout = inflater.inflate(R.layout.local_weather_template, null, false);
-
-        // Get detailed weather and initialize save button
-        GetDetailedWeather getWeather = new GetDetailedWeather();
+        GetDetailedWeather getWeather = new GetDetailedWeather(this);
         getWeather.execute("https://api.openweathermap.org/data/2.5/weather?q=" + cityName + ",us&appid=9035a183aea3ebf0f7fe2c28dc04c7b3",
-                "https://api.openweathermap.org/data/2.5/forecast?q=" + cityName + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3");
+                "https://api.openweathermap.org/data/2.5/forecast?q=" + cityName + "&appid=9035a183aea3ebf0f7fe2c28dc04c7b3", intentSource);
     }
 
     // Call getComplete. Pass Complete object to buildDisplayWeather. Then add saveCity button to activity.
     private class GetDetailedWeather extends AsyncTask<String, Void, CompletePlusForecast> {
 
+        private WeakReference<DisplayWeatherActivity> activityRef;
+
+        public GetDetailedWeather(DisplayWeatherActivity context){
+            this.activityRef = new WeakReference<>(context);
+        }
         // Call getComplete. Pass Complete object to onPostExecute
         protected CompletePlusForecast doInBackground(String... strings) {
             try{
-                Complete complete = MainActivity.getComplete(strings[0]);
+                final String weatherData = MainActivity.getWeatherData(strings[0]);
+                Complete complete = MainActivity.parseWeatherData(weatherData);
                 CompleteForecast forecast = MainActivity.getCompleteForecast(strings[1]);
                 CompletePlusForecast completePlusForecast = new CompletePlusForecast(complete, forecast);
+
+                if(strings[2].equals("searchedCity")) {
+                    DisplayWeatherActivity activity = activityRef.get();
+                    if (activity == null || activity.isFinishing()) return null;
+
+                    activity.findViewById(R.id.button).setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            saveCity(weatherData);
+                        }
+                    });
+
+                }
+
                 return completePlusForecast;
             } catch(Exception e) {
                 e.printStackTrace();
@@ -89,41 +75,23 @@ public class DisplayWeatherActivity extends AppCompatActivity {
 
         // Pass Complete object to buildDisplayWeather and make save Button
         protected void onPostExecute(CompletePlusForecast result) {
-            try {
+            DisplayWeatherActivity activity = activityRef.get();
+            if(activity == null || activity.isFinishing()) return;
+            if(result != null){
                 System.err.println(result.complete.name);
-                buildDisplayWeather(result.complete, result.forecast);
-
-                complete = result.complete;
-
-                // If city was searched, Make save button and set it's click to saveCity(cityID)
-                if(intentSource.equals("searchedCity")) {
-                    Button saveCity = new Button(context);
-                    saveCity.setText("Add To Favorites");
-                    final long cityID = result.complete.id;
-                    saveCity.setOnClickListener(new View.OnClickListener() {
-                        @Override
-                        public void onClick(View view) {
-                            saveCity(cityID);
-                        }
-                    });
-                    ll.addView(saveCity);
-                }
-
-
-            }catch(Exception e) {
+                buildDisplayWeather(result.complete, result.forecast, activity);
+            }else {
                 //City was not able to be searched
-                // startActivityForResult(intent, failedSearch );
-                e.printStackTrace();
                 setResult(failedSearch);
                 finish();
-
             }
         }
     }
 
     // Inflate layout and populate using Complete parameter. Then add layout to ll
-    private void buildDisplayWeather(Complete complete, CompleteForecast forecast) {
+    private void buildDisplayWeather(Complete complete, CompleteForecast forecast, DisplayWeatherActivity activity) {
 
+        View displayWeatherLayout = activity.findViewById(R.id.localWeather);
         // Lookup views from display_weather_template.xml
         TextView cityName = (TextView) displayWeatherLayout.findViewById(R.id.localCityName);
         TextView temperature = (TextView) displayWeatherLayout.findViewById(R.id.localTemperature);
@@ -165,7 +133,6 @@ public class DisplayWeatherActivity extends AppCompatActivity {
             if(time == 0) {
                 time = 12;
             }
-            //forecastTime.setText(String.valueOf( (((forecast.list[i].dt + forecast.city.coord.timezone) % 86400) / 3600) %12 ));
             forecastTime.setText(time + amOrPm );
             forecastTime.setGravity(Gravity.CENTER_HORIZONTAL);
 
@@ -185,30 +152,12 @@ public class DisplayWeatherActivity extends AppCompatActivity {
             System.out.println("GGGGGGG");
             System.out.println("DDDDDDD");
         }
-
-        // Add the layout to ll
-        ll.addView(displayWeatherLayout);
     }
 
-    //Save cityID in db and start MainActivity for onActivityResult
-    public void saveCity(long cityID) {
-        try {
-            // Add data to database
-            db.insertData(cityID);
-            MainActivity.adapter.notifyItemInserted(MainActivity.adapter.getItemCount());
-            MainActivity.result2.add(complete);
-            db.close();
-
-            // Send intent that will call onActivityResult() in MainActivity
-//            Intent intent = new Intent(this, MainActivity.class);
-//            startActivityForResult(intent, saveCityCode );
-            setResult(citySaved);
-            finish();
-
-        } catch (Error e) {
-            // Snackbar failure message
-            Snackbar snackbarFailure = Snackbar.make(findViewById(R.id.root2), R.string.snackbar_failure_message, BaseTransientBottomBar.LENGTH_SHORT);
-            snackbarFailure.show();
-        }
+    public void saveCity(String weatherData) {
+        Intent intent = new Intent();
+        intent.putExtra("weatherData", weatherData);
+        setResult(citySaved, intent);
+        finish();
     }
 }
